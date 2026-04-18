@@ -1,0 +1,19 @@
+{
+  "use_official_first": {
+    "description": "是否优先从 osu! 官网下载 (失败自动回退镜像站)",
+    "type": "bool",
+    "default": true
+  },
+  "osu_session": {
+    "description": "osu_session",
+    "type": "string",
+    "default": "",
+    "hint": "在官网登录后，按 F12 抓包获取，有一定时效性"
+  },
+  "proxy": {
+    "description": "访问官网使用的代理 (例如 http://127.0.0.1:7890)",
+    "type": "string",
+    "default": "",
+    "hint": "如果服务器在海外，或者使用旁路由透明代理，可留空"
+  }
+}

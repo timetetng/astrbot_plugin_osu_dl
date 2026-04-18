@@ -1,0 +1,6 @@
+name: astrbot_plugin_osu_dl
+displayname: osu!谱面下载
+desc: 自动识别聊天中的 osu! 谱面链接并发送 osz 文件
+author: timetetng
+version: 1.0.0
+repo: https://github.com/timetetng/astrbot_plugin_osu_dl

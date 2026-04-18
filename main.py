@@ -398,7 +398,13 @@ class OsuDownloaderPlugin(Star):
         if not osu_session:
             return False, ""
 
-        download_url = f"https://osu.ppy.sh/beatmapsets/{bms_id}/download"
+        # 读取是否下载视频的配置
+        download_with_video = self.config.get("download_with_video", False)
+        if download_with_video:
+            download_url = f"https://osu.ppy.sh/beatmapsets/{bms_id}/download"
+        else:
+            download_url = f"https://osu.ppy.sh/beatmapsets/{bms_id}/download?noVideo=1"
+
         headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -583,6 +589,21 @@ class OsuDownloaderPlugin(Star):
                     filename = f"{bms_id} {safe_song_name}.osz"
                     target_path = os.path.join(temp_dir, filename)
 
+                    # === 读取是否下载视频的配置，动态构建镜像站链接 ===
+                    download_with_video = self.config.get("download_with_video", False)
+                    if download_with_video:
+                        mirrors = [
+                            f"https://catboy.best/d/{bms_id}",
+                            f"https://dl.sayobot.cn/beatmaps/download/full/{bms_id}",
+                            f"https://osu.direct/api/d/{bms_id}",
+                        ]
+                    else:
+                        mirrors = [
+                            f"https://catboy.best/d/{bms_id}n",
+                            f"https://dl.sayobot.cn/beatmaps/download/novideo/{bms_id}",
+                            f"https://osu.direct/api/d/{bms_id}",
+                        ]
+
                     # === 1. 尝试从本地缓存中获取 ===
                     if self._check_and_copy_cache(str(bms_id), target_path):
                         download_success = True
@@ -605,12 +626,6 @@ class OsuDownloaderPlugin(Star):
                         # === 3. 官方失败或未开启，回退测速镜像站 ===
                         if not download_success:
                             file_path = target_path
-                            mirrors = [
-                                f"https://catboy.best/d/{bms_id}n",
-                                f"https://dl.sayobot.cn/beatmaps/download/novideo/{bms_id}",
-                                f"https://osu.direct/api/d/{bms_id}",
-                            ]
-
                             fastest_url = await self._get_fastest_mirror(
                                 session, mirrors, str(bms_id)
                             )
@@ -681,6 +696,21 @@ class OsuDownloaderPlugin(Star):
                     download_success = False
                     target_path = os.path.join(temp_dir, f"{bms_id}.osz")
 
+                    # === 读取是否下载视频的配置，动态构建镜像站链接 ===
+                    download_with_video = self.config.get("download_with_video", False)
+                    if download_with_video:
+                        mirrors = [
+                            f"https://catboy.best/d/{bms_id}",
+                            f"https://dl.sayobot.cn/beatmaps/download/full/{bms_id}",
+                            f"https://osu.direct/api/d/{bms_id}",
+                        ]
+                    else:
+                        mirrors = [
+                            f"https://catboy.best/d/{bms_id}n",
+                            f"https://dl.sayobot.cn/beatmaps/download/novideo/{bms_id}",
+                            f"https://osu.direct/api/d/{bms_id}",
+                        ]
+
                     # === 1. 尝试从缓存获取 ===
                     if self._check_and_copy_cache(str(bms_id), target_path):
                         download_success = True
@@ -705,12 +735,6 @@ class OsuDownloaderPlugin(Star):
                         # === 3. 官方失败回退镜像站 ===
                         if not download_success:
                             file_path = target_path
-                            mirrors = [
-                                f"https://catboy.best/d/{bms_id}n",
-                                f"https://dl.sayobot.cn/beatmaps/download/novideo/{bms_id}",
-                                f"https://osu.direct/api/d/{bms_id}",
-                            ]
-
                             fastest_url = await self._get_fastest_mirror(
                                 session, mirrors, str(bms_id)
                             )

@@ -15,5 +15,11 @@
     "type": "string",
     "default": "",
     "hint": "如果服务器在海外，或者使用旁路由透明代理，可留空"
+  },
+  "download_with_video": {
+    "description": "是否下载带有视频的谱面",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后将下载带有背景视频的完整包（体积较大）；关闭则下载无视频(novideo)版本"
   }
 }

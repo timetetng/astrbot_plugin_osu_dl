@@ -106,8 +106,7 @@ class OsuDownloaderPlugin(Star):
         )
 
     @filter.command("osu")
-    async def osu_cmd(self, event: AstrMessageEvent, *args):
-        keyword = " ".join(args).strip()
+    async def osu_cmd(self, event: AstrMessageEvent, keyword: str):
         if not keyword:
             await self._send_napcat_msg(
                 event,

@@ -21,7 +21,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     "astrbot_plugin_osu_dl",
     "timetetng",
     "自动解析并发送 osu! 谱面，支持任务管理与并发测速",
-    "1.0.0",
+    "1.0.1",
 )
 class OsuDownloaderPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -88,6 +88,7 @@ class OsuDownloaderPlugin(Star):
     @filter.command("osuclear")
     async def osu_clear_cmd(self, event: AstrMessageEvent):
         """强制清理所有后台 Osu 下载任务与等待队列"""
+        event.stop_event()
         tasks_count = len(self.download_tasks)
         for task in self.download_tasks:
             if not task.done():
@@ -107,6 +108,7 @@ class OsuDownloaderPlugin(Star):
 
     @filter.command("osu")
     async def osu_cmd(self, event: AstrMessageEvent, keyword: str):
+        event.stop_event()
         if not keyword:
             await self._send_napcat_msg(
                 event,
@@ -176,6 +178,7 @@ class OsuDownloaderPlugin(Star):
         if not session_id or session_id not in self.pending_searches:
             return
 
+        event.stop_event()  # 确认是选择序号，拦截事件
         pending_data = self.pending_searches[session_id]
         if time.time() - pending_data["time"] > 60:
             del self.pending_searches[session_id]
@@ -211,6 +214,8 @@ class OsuDownloaderPlugin(Star):
         matches = re.findall(r"osu\.ppy\.sh/beatmapsets/(\d+)", message_str)
         if not matches:
             return
+        
+        event.stop_event()  # 拦截事件，防止发送含有链接的内容后触发 LLM
         beatmapset_ids = list(set(matches))
         logger.info(f"[OsuDl] 正则提取到谱面 ID: {beatmapset_ids}")
         self._start_download_task(event, beatmapset_ids)

@@ -117,10 +117,6 @@ class OsuDownloaderPlugin(Star):
             return
 
         if keyword.isdigit():
-            await self._send_napcat_msg(
-                event,
-                f"🔍 检测到纯数字 ID：{keyword}，开始解析映射并转入后台测速下载...",
-            )
             self._start_download_task(event, [keyword])
             return
 

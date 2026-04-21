@@ -1,9 +1,8 @@
-：
-
-```markdown
 # 🎵 osu!谱面下载 (astrbot_plugin_osu_dl)
 
-![logo](logo.png)
+<p align="center">
+  <img src="logo.png" alt="logo" />
+</p>
 
 **astrbot_plugin_osu_dl** 是一个为 [AstrBot](https://github.com/Soulter/AstrBot) 开发的 osu! 谱面解析与下载插件。它可以自动识别聊天中的 osu! 谱面链接，支持命令搜索，并自动将谱面（`.osz`）发送到群聊或私聊中。
 
@@ -54,5 +53,4 @@
 
 ## 📄 开源协议
 本项目采用 [MIT License](LICENSE) 开源协议。
-```
 

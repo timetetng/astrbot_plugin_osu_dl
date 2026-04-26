@@ -39,5 +39,11 @@
     "type": "bool",
     "default": false,
     "hint": "开启后会返回更详细的分析数据，但响应可能更慢"
+  },
+  "download_with_analysis": {
+    "description": "下载谱面后自动进行难度分析并输出 metadata",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后下载完成会延迟输出谱面难度、键型、LN 占比等信息（需要先填写 analysis_api_url）"
   }
 }

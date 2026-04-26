@@ -855,13 +855,7 @@ class OsuDownloaderPlugin(Star):
                         f"https://assets.ppy.sh/beatmaps/{bms_id}/covers/cover.jpg"
                     )
 
-                    msg_text = (
-                        f"🔗 获取到谱面信息\n"
-                        f"🎵 {song_name}\n"
-                        f"👤 谱师: {mapper_name}\n"
-                        f"📦 后台正在尝试为您下载..."
-                    )
-                    await self._send_napcat_msg(event, msg_text, cover_url)
+                    logger.info(f"[OsuDl] 开始下载谱面 {bms_id}")
 
                     shared_temp_base = "/AstrBot/data/osu_temp"
                     os.makedirs(shared_temp_base, exist_ok=True)
@@ -936,10 +930,64 @@ class OsuDownloaderPlugin(Star):
                         if download_success and file_path:
                             self._save_to_cache(str(bms_id), file_path)
 
+                    do_analysis = self.config.get("download_with_analysis", False) and self.config.get("analysis_api_url", "").strip()
+
                     if download_success:
                         os.chmod(file_path, 0o777)
                         logger.info(f"[OsuDl] 准备下发文件至 Napcat: {filename}")
+
                         await self._upload_via_napcat(event, file_path, filename)
+
+                        if do_analysis:
+                            api_url = self.config.get("analysis_api_url", "").strip()
+                            algorithm = self.config.get("analysis_default_algorithm", "Mixed").strip()
+                            include_extras = self.config.get("analysis_include_extras", False)
+                            try:
+                                results = await asyncio.gather(
+                                    self._analyze_osz(api_url, file_path, ["HT"], algorithm, include_extras),
+                                    self._analyze_osz(api_url, file_path, [], algorithm, include_extras),
+                                    self._analyze_osz(api_url, file_path, ["DT"], algorithm, include_extras),
+                                )
+                                ht_result = results[0] if results[0] and not results[0].get("error") else None
+                                nom_result = results[1] if results[1] and not results[1].get("error") else None
+                                dt_result = results[2] if results[2] and not results[2].get("error") else None
+
+                                if nom_result:
+                                    r = nom_result.get("result", {})
+                                    star = round(r.get("starRating", 0), 2)
+                                    ln_ratio = r.get("lnRatio", 0)
+                                    diff_label = r.get("difficultyLabel", "N/A")
+                                    pattern = ""
+                                    if r.get("patternReport"):
+                                        pr = r["patternReport"]
+                                        category = pr.get("Category", "N/A")
+                                        mode_tag = pr.get("ModeTag", "")
+                                        if mode_tag:
+                                            category = f"{category} ({mode_tag})"
+                                        pattern = category
+
+                                    ht_star = ht_result.get("result", {}).get("starRating", 0) if ht_result else 0
+                                    dt_star = dt_result.get("result", {}).get("starRating", 0) if dt_result else 0
+
+                                    msg = f"🔗 获取到谱面信息\n"
+                                    msg += f"🎵 {song_name}\n"
+                                    msg += f"👤 谱师: {mapper_name}\n"
+                                    msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    msg += f"⭐ 难度: {round(ht_star, 2)} ★/{star} ★/{round(dt_star, 2)} ★\n"
+                                    if pattern:
+                                        msg += f"🏷️ 键型: {pattern}"
+                                        if ln_ratio > 0:
+                                            msg += f" | LN:{ln_ratio*100:.1f}%"
+                                        msg += f"\n"
+                                    elif ln_ratio > 0:
+                                        msg += f"📈 LN: {ln_ratio*100:.1f}%\n"
+                                    msg += f"📝 {diff_label}\n"
+                                    if include_extras and r.get("interludeStar"):
+                                        msg += f"🎼 Interlude: {round(r['interludeStar'], 2)} ★\n"
+                                    msg = msg.rstrip() + "\n━━━━━━━━━━━━━━━━━━━━"
+                                    await self._send_napcat_msg(event, msg, cover_url)
+                            except Exception as e:
+                                logger.error(f"[OsuDl] 下载后分析异常: {e}")
                     else:
                         await self._send_napcat_msg(
                             event,

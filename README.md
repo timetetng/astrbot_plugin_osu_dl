@@ -94,7 +94,7 @@
 
 ##  相关项目
 
-- 难度分析 API 原仓库：[LeoBlackMT/osumania_map_analyser](https://github.com/LeoBlackMT/osumania_map_analyser)
+- 难度分析原仓库：[LeoBlackMT/osumania_map_analyser](https://github.com/LeoBlackMT/osumania_map_analyser)
 - 难度分析 API 部署仓库：[timetetng/osumania_map_analyser_api](https://github.com/timetetng/osumania_map_analyser_api)
 
 ## 📄 开源协议

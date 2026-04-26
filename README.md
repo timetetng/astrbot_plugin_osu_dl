@@ -50,12 +50,12 @@
   **描述**: 对谱面进行难度分析。
 
   **支持的 Mod**：DT、NC、HT、HR、EZ、IN、HO
-  - DT/NC：Double Time / Night Core（1.5x 速）
-  - HT：Half Time（0.75x 速）
-  - HR：Hard Rock（难度 +30%）
-  - EZ：Easy（难度 -70%）
-  - IN：Convert（LN 转红键）
-  - HO：Hold Off（长条转普通音符）
+  - DT/NC：Double Time / Night Core
+  - HT：Half Time
+  - HR：Hard Rock
+  - EZ：Easy
+  - IN：Convert
+  - HO：Hold Off
 
   **支持的算法**：Sunny、Daniel、Azusa、Mixed（默认）
 
@@ -92,7 +92,7 @@
 - **缓存清理**：插件会自动在 `/AstrBot/data/osu_cache` 生成缓存文件，缓存有效期为 24 小时，过期后会自动清理，无需担心硬盘堆积。
 - **难度分析 API**：难度分析功能需要额外部署 [osumania_map_analyser_api](https://github.com/timetetng/osumania_map_analyser_api)，请参考其文档进行部署。
 
-## 🙏 致谢
+##  相关项目
 
 - 难度分析 API 原仓库：[LeoBlackMT/osumania_map_analyser](https://github.com/LeoBlackMT/osumania_map_analyser)
 - 难度分析 API 部署仓库：[timetetng/osumania_map_analyser_api](https://github.com/timetetng/osumania_map_analyser_api)

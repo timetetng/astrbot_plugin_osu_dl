@@ -6,7 +6,8 @@ import zipfile
 import tempfile
 import shutil
 import time
-from urllib.parse import unquote
+import io
+from urllib.parse import unquote, urlparse
 
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
@@ -200,6 +201,289 @@ class OsuDownloaderPlugin(Star):
                 event,
                 f"⚠️ 序号无效，请输入 1-{len(bms_list)} 之间的数字，或输入 0 取消。",
             )
+
+    # ==========================================
+    # 1.5 难度分析
+    # ==========================================
+    @filter.command("osu分析")
+    async def osu_analyze_cmd(self, event: AstrMessageEvent):
+        event.stop_event()
+        api_url = self.config.get("analysis_api_url", "").strip()
+        if not api_url:
+            await self._send_napcat_msg(
+                event,
+                "⚠️ 难度分析功能未启用，请在配置中填写 analysis_api_url 参数。",
+            )
+            return
+
+        raw = event.message_str.strip()
+
+        match = re.match(r"^!?\s*osu分析\s+(.+)$", raw, re.IGNORECASE)
+        if match:
+            keyword = match.group(1).strip()
+        else:
+            keyword = raw.strip()
+
+        if not keyword:
+            await self._send_napcat_msg(
+                event,
+                "⚠️ 请提供谱面 ID、难度 ID 或谱面链接。\n"
+                "格式：!osu分析 <ID或链接> [Mods] [算法]\n"
+                "示例：!osu分析 5536219 DT HR\n"
+                "支持的 Mod：DT NC HT HR EZ IN HO\n"
+                "支持的算法：Sunny Daniel Azusa Mixed",
+            )
+            return
+
+        logger.info(f"[OsuDl] 难度分析收到 raw keyword: '{keyword}'")
+        mods = []
+        algorithm = self.config.get("analysis_default_algorithm", "Mixed").strip()
+        include_extras = self.config.get("analysis_include_extras", False)
+
+        parts = keyword.strip().split()
+        raw_input = parts[0]
+        if len(parts) > 1:
+            for part in parts[1:]:
+                upper = part.upper()
+                if upper in ("DT", "NC", "HT", "HR", "EZ", "IN", "HO"):
+                    if upper == "NC":
+                        mods.append("DT")
+                    else:
+                        mods.append(upper)
+                elif upper in ("SUNNY", "DANIEL", "AZUSA", "MIXED"):
+                    algorithm = upper
+                elif upper.startswith("ALGO="):
+                    algorithm = upper[5:].strip()
+
+        bms_id = self._extract_beatmapset_id(raw_input)
+        if not bms_id:
+            await self._send_napcat_msg(event, f"⚠️ 无法从「{raw_input}」中提取谱面 ID。")
+            return
+
+        resolved_id = bms_id
+        try:
+            async with aiohttp.ClientSession() as session:
+                resolved_id = await self._resolve_bms_id(session, bms_id)
+                if resolved_id != bms_id:
+                    logger.info(f"[OsuDl] 难度 ID {bms_id} 已解析为谱面集 ID: {resolved_id}")
+                bms_id = resolved_id
+                metadata = await self._get_beatmap_metadata(session, bms_id)
+        except Exception as e:
+            logger.error(f"[OsuDl] ID解析异常: {e}")
+            metadata = None
+
+        await self._send_napcat_msg(event, f"🔍 正在获取谱面 {bms_id} 并分析难度，请稍候...")
+
+        try:
+            osz_path = await self._download_for_analysis(event, bms_id)
+            if not osz_path:
+                await self._send_napcat_msg(
+                    event, f"⚠️ 无法下载谱面 {bms_id}，请检查 ID 是否正确或网络状况。"
+                )
+                return
+
+            result = await self._analyze_osz(api_url, osz_path, mods, algorithm, include_extras)
+            os.unlink(osz_path)
+
+            if not result:
+                await self._send_napcat_msg(event, "⚠️ 分析请求失败，请检查 API 服务是否正常运行。")
+                return
+
+            if result.get("error"):
+                await self._send_napcat_msg(event, f"⚠️ 分析出错：{result['error']}")
+                return
+
+            msg = self._format_analysis_result(result, mods, algorithm, include_extras, metadata)
+            await self._send_napcat_msg(event, msg)
+
+        except Exception as e:
+            logger.error(f"[OsuDl] 难度分析异常: {e}", exc_info=True)
+            await self._send_napcat_msg(event, f"⚠️ 分析过程异常：{str(e)}")
+
+    def _extract_beatmapset_id(self, raw_input: str) -> str:
+        if raw_input.isdigit():
+            return raw_input
+
+        match = re.search(r"osu\.ppy\.sh/beatmapsets/(\d+)", raw_input)
+        if match:
+            return match.group(1)
+
+        match = re.search(r"/(\d{6,})", raw_input)
+        if match:
+            return match.group(1)
+
+        return None
+
+    async def _download_for_analysis(self, event: AstrMessageEvent, bms_id: str) -> str:
+        shared_temp_base = "/AstrBot/data/osu_temp"
+        os.makedirs(shared_temp_base, exist_ok=True)
+        os.chmod(shared_temp_base, 0o777)
+        temp_dir = tempfile.mkdtemp(dir=shared_temp_base)
+        os.chmod(temp_dir, 0o777)
+
+        target_path = os.path.join(temp_dir, f"{bms_id}.osz")
+
+        if self._check_and_copy_cache(str(bms_id), target_path):
+            return target_path
+
+        async with aiohttp.ClientSession() as session:
+            download_with_video = self.config.get("download_with_video", False)
+            if download_with_video:
+                mirrors = [
+                    f"https://catboy.best/d/{bms_id}",
+                    f"https://dl.sayobot.cn/beatmaps/download/full/{bms_id}",
+                    f"https://osu.direct/api/d/{bms_id}",
+                ]
+            else:
+                mirrors = [
+                    f"https://catboy.best/d/{bms_id}n",
+                    f"https://dl.sayobot.cn/beatmaps/download/novideo/{bms_id}",
+                    f"https://osu.direct/api/d/{bms_id}",
+                ]
+
+            download_success = False
+
+            if self.config.get("use_official_first", True) and self.config.get("osu_session"):
+                download_success, official_path = await self._download_official(
+                    session, str(bms_id), temp_dir
+                )
+                if download_success:
+                    self._save_to_cache(str(bms_id), official_path)
+                    return official_path
+
+            fastest_url = await self._get_fastest_mirror(session, mirrors, str(bms_id))
+            download_success = await self._download_file_with_progress(
+                session, fastest_url, target_path, str(bms_id)
+            )
+
+            if not download_success:
+                for link in mirrors:
+                    if link != fastest_url:
+                        download_success = await self._download_file_with_progress(
+                            session, link, target_path, str(bms_id)
+                        )
+                        if download_success:
+                            break
+
+            if download_success:
+                self._save_to_cache(str(bms_id), target_path)
+                return target_path
+
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None
+
+    async def _analyze_osz(
+        self, api_url: str, osz_path: str, mods: list, algorithm: str, include_extras: bool
+    ) -> dict:
+        url = f"{api_url.rstrip('/')}/analyze"
+
+        file_content = open(osz_path, "rb").read()
+
+        form = aiohttp.FormData()
+        form.add_field("algorithm", algorithm)
+        if include_extras:
+            form.add_field("includeExtras", "true")
+        for mod in mods:
+            form.add_field("mods[]", mod)
+        form.add_field(
+            "file",
+            io.BytesIO(file_content),
+            filename=os.path.basename(osz_path),
+            content_type="application/octet-stream",
+        )
+
+        async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=120)
+            async with session.post(url, data=form, timeout=timeout) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                elif resp.status == 400:
+                    try:
+                        return await resp.json()
+                    except:
+                        return {"error": "请求参数错误 (400)"}
+                elif resp.status == 500:
+                    try:
+                        return await resp.json()
+                    except:
+                        return {"error": "服务器内部错误 (500)"}
+                else:
+                    return {"error": f"HTTP {resp.status}"}
+
+    async def _get_beatmap_metadata(self, session: aiohttp.ClientSession, bms_id: str) -> dict:
+        info_url = f"https://api.sayobot.cn/v2/beatmapinfo?0={bms_id}"
+        try:
+            async with session.get(info_url) as resp:
+                if resp.status == 200:
+                    info_json = await resp.json(content_type=None)
+                    if info_json.get("status") == 0 and info_json.get("data"):
+                        data = info_json["data"]
+                        title = data.get("titleU") or data.get("title", "未知标题")
+                        artist = data.get("artistU") or data.get("artist", "未知艺术家")
+                        mapper = data.get("creator", "未知谱师")
+                        return {
+                            "title": title,
+                            "artist": artist,
+                            "mapper": mapper,
+                            "song_name": f"{artist} - {title}",
+                        }
+        except:
+            pass
+        return {"title": "未知", "artist": "未知", "mapper": "未知", "song_name": "未知"}
+
+    def _format_analysis_result(self, result: dict, mods: list, algorithm: str, include_extras: bool = False, metadata: dict = None) -> str:
+        if not result.get("success"):
+            return f"⚠️ 分析失败：{result.get('error', '未知错误')}"
+
+        r = result.get("result", {})
+        star = round(r.get("starRating", 0), 2)
+        ln_ratio = r.get("lnRatio", 0)
+        columns = r.get("columnCount", "?")
+        diff_label = r.get("difficultyLabel", "N/A")
+        algo_used = r.get("algorithm", algorithm)
+        speed_rate = r.get("speedRate", 1.0)
+        od_flag = r.get("odFlag")
+        cvt_flag = r.get("cvtFlag")
+
+        meta = metadata or {}
+        song_name = meta.get("song_name", "未知")
+        mapper = meta.get("mapper", "未知")
+
+        msg = f"📊 难度分析结果\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"🎵 {song_name}\n"
+        msg += f"👤 谱师: {mapper}\n"
+        msg += f"⭐ 难度: {star} ★\n"
+        if r.get("patternReport"):
+            pr = r["patternReport"]
+            category = pr.get("Category", "N/A")
+            mode_tag = pr.get("ModeTag", "")
+            if mode_tag:
+                category = f"{category} ({mode_tag})"
+            msg += f"🏷️ 键型: {category}\n"
+        msg += f"📝 {diff_label}\n"
+        msg += f"🎹 {columns}K\n"
+        msg += f"📈 LN: {ln_ratio*100:.1f}%\n"
+
+        flags = []
+        if mods:
+            flags.append(" ".join(mods))
+        if od_flag:
+            flags.append(f"OD{od_flag}")
+        if cvt_flag:
+            flags.append(cvt_flag)
+        if speed_rate != 1.0:
+            flags.append(f"×{speed_rate}")
+        if flags:
+            msg += f"⚡ {' | '.join(flags)}\n"
+
+        if include_extras and r.get("interludeStar"):
+            msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+            msg += f"🎼 Interlude: {round(r['interludeStar'], 2)} ★\n"
+
+
+
+        return msg.strip()
 
     # ==========================================
     # 1. 传统正则触发

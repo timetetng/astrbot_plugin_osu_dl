@@ -21,5 +21,23 @@
     "type": "bool",
     "default": false,
     "hint": "开启后将下载带有背景视频的完整包（体积较大）；关闭则下载无视频(novideo)版本"
+  },
+  "analysis_api_url": {
+    "description": "谱面难度分析 API 地址 (留空则不启用此功能)",
+    "type": "string",
+    "default": "",
+    "hint": "例如 http://localhost:3000，不填则禁用难度分析功能"
+  },
+  "analysis_default_algorithm": {
+    "description": "难度分析的默认算法",
+    "type": "string",
+    "default": "Mixed",
+    "hint": "可选: Sunny, Daniel, Azusa, Mixed"
+  },
+  "analysis_include_extras": {
+    "description": "分析结果是否包含额外信息 (pattern 分析、interlude SR 等)",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后会返回更详细的分析数据，但响应可能更慢"
   }
 }
